@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin – The Day You Arrived</title>
+<style>
+body{margin:0;font:15px system-ui,sans-serif;background:#14110d;color:#f3ecdf;padding:20px}
+h1{font:700 1.5rem Georgia,serif;color:#f3cd82;margin:0 0 14px}
+button,input{font:inherit;border-radius:10px;border:1px solid #fff3;padding:8px 14px;background:#2a2016;color:#f3ecdf;cursor:pointer}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+.t{background:#ffffff0f;border:1px solid #fff2;border-radius:14px;padding:14px;text-align:center}.t b{display:block;font-size:1.8rem;color:#f0a878}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #fff2}th{color:#f3cd82}
+.w{overflow-x:auto}[hidden]{display:none!important}
+</style></head><body>
+<h1>The Day You Arrived · Admin</h1>
+<div id="login"><button id="in">Sign in with Google</button><p id="msg"></p></div>
+<div id="app" hidden>
+<div class="bar"><span id="who"></span><button id="out">Sign out</button></div>
+<div class="g"><div class="t"><b id="v">0</b>Visits</div><div class="t"><b id="uv">0</b>Unique visitors</div><div class="t"><b id="u">0</b>Reveals (uses)</div><div class="t"><b id="uu">0</b>Unique users</div><div class="t"><b id="cr">0%</b>Visitors who used it</div></div>
+<div class="bar"><input id="q" placeholder="Search name, date or city"><button id="csv">Export CSV</button><span id="n"></span></div>
+<div class="w"><table><thead><tr><th>Name</th><th>Date of birth</th><th>City</th><th>Submitted</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+</div>
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getFirestore,doc,onSnapshot,collection,query,orderBy,limit,deleteDoc} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {firebaseConfig,ADMIN_EMAIL} from './firebase-config.js';
+const $=s=>document.querySelector(s),app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+let data=[],unsubs=[];
+$('#in').onclick=()=>signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>$('#msg').textContent=e.message);
+$('#out').onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{unsubs.forEach(f=>f());unsubs=[];
+ const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();
+ $('#app').hidden=!ok;$('#login').hidden=!!ok;
+ if(u&&!ok){$('#login').hidden=false;$('#msg').textContent='This account is not the admin. Sign out and use the right one.';$('#in').textContent='Switch account'}
+ if(!ok)return;$('#who').textContent=u.email;
+ unsubs.push(onSnapshot(doc(db,'stats','counters'),s=>{const d=s.data()||{};$('#v').textContent=d.visits||0;$('#uv').textContent=d.uniqueVisitors||0;$('#u').textContent=d.uses||0;$('#uu').textContent=d.uniqueUsers||0;$('#cr').textContent=(d.uniqueVisitors?Math.round(100*(d.uniqueUsers||0)/d.uniqueVisitors):0)+'%'}));
+ unsubs.push(onSnapshot(query(collection(db,'entries'),orderBy('createdAt','desc'),limit(1000)),s=>{data=s.docs.map(d=>({id:d.id,...d.data()}));draw()}))});
+const when=e=>e.createdAt&&e.createdAt.toDate?e.createdAt.toDate().toLocaleString():'';
+function draw(){const q=$('#q').value.toLowerCase(),b=$('#rows');b.textContent='';
+ const list=data.filter(e=>(e.name+' '+e.dob+' '+e.city).toLowerCase().includes(q));$('#n').textContent=list.length+' of '+data.length+' entries';
+ list.forEach(e=>{const tr=b.insertRow();[e.name||'(no name)',e.dob,e.city,when(e)].forEach(t=>tr.insertCell().textContent=t);
+  const x=document.createElement('button');x.textContent='Delete';x.onclick=()=>confirm('Delete this entry?')&&deleteDoc(doc(db,'entries',e.id));tr.insertCell().append(x)})}
+$('#q').oninput=draw;
+$('#csv').onclick=()=>{const c=v=>{v=String(v??'');if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'};
+ const t=['Name,Date of birth,City,Submitted',...data.map(e=>[e.name,e.dob,e.city,when(e)].map(c).join(','))].join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='entries.csv';a.click()};
+</script></body></html>

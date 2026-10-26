@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace with YOUR Google account email (same as ADMIN_EMAIL in firebase-config.js)
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'shubhamtiwary650@gmail.com';
+    }
+    function inc(f) {
+      return (request.resource.data[f] - resource.data[f]) in [0, 1];
+    }
+    // Counters: anyone may add +1, only you may read.
+    match /stats/counters {
+      allow read: if isAdmin();
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['visits', 'uniqueVisitors', 'uses', 'uniqueUsers'])
+        && inc('visits') && inc('uniqueVisitors') && inc('uses') && inc('uniqueUsers');
+    }
+    // Entries: anyone may create a well-formed one, only you may read or delete.
+    match /entries/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['name', 'dob', 'city', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'dob', 'city', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40
+        && request.resource.data.city is string && request.resource.data.city.size() <= 40
+        && request.resource.data.dob is string
+        && request.resource.data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+  }
+}
